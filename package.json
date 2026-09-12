@@ -1,0 +1,31 @@
+{
+  "name": "pi-openai-quota",
+  "version": "0.1.0",
+  "description": "Show remaining ChatGPT/Codex quota in the pi footer.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Arnaud",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Doooooo0o/pi-openai-quota.git"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-coding-agent",
+    "openai",
+    "chatgpt",
+    "codex",
+    "quota"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node extensions/pi-openai-quota.js"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/pi-openai-quota.js"
+    ]
+  }
+}
