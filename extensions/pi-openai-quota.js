@@ -54,7 +54,7 @@ async function readJson(response) {
 	return JSON.parse(new TextDecoder().decode(Buffer.concat(chunks, size)));
 }
 
-export function formatQuota(value) {
+export function formatQuota(value, now = Date.now()) {
 	const rateLimit = value && typeof value === "object" ? value.rate_limit : undefined;
 	const windows = rateLimit && typeof rateLimit === "object"
 		? [rateLimit.primary_window, rateLimit.secondary_window]
@@ -64,12 +64,23 @@ export function formatQuota(value) {
 		const seconds = Number(window.limit_window_seconds);
 		const used = Number(window.used_percent);
 		if (!(seconds > 0) || !Number.isFinite(used)) return [];
+		const resetAt = Number(window.reset_at);
+		const resetAfter = Number(window.reset_after_seconds);
+		const reset = new Date(Number.isFinite(resetAt) && resetAt > 0
+			? resetAt * 1000
+			: window.reset_after_seconds != null && Number.isFinite(resetAfter) && resetAfter >= 0
+				? now + resetAfter * 1000
+				: NaN);
 		const label = seconds >= 86_400 ? `${Math.round(seconds / 86_400)}d` : `${Math.round(seconds / 3_600)}h`;
-		return [{ label, remaining: Math.round(Math.max(0, Math.min(100, 100 - used))) }];
+		return [{
+			label,
+			remaining: Math.round(Math.max(0, Math.min(100, 100 - used))),
+			reset: Number.isNaN(reset.getTime()) ? "" : ` ↻ ${reset.toTimeString().slice(0, 5)}`,
+		}];
 	});
 	if (!quotas.length) throw new Error("Unknown OpenAI quota response format");
 	return {
-		text: `GPT ${quotas.map(({ label, remaining }) => `${label} ${remaining}%`).join(" · ")}`,
+		text: `GPT ${quotas.map(({ label, remaining, reset }) => `${label} ${remaining}%${reset}`).join(" · ")}`,
 		minimum: Math.min(...quotas.map(({ remaining }) => remaining)),
 	};
 }
@@ -125,16 +136,21 @@ export default function piOpenAIQuota(pi) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+	const now = new Date(2030, 0, 2, 10).getTime();
 	const sample = formatQuota({ rate_limit: {
-		primary_window: { limit_window_seconds: 18_000, used_percent: 23 },
-		secondary_window: { limit_window_seconds: 604_800, used_percent: 61 },
-	} });
+		primary_window: {
+			limit_window_seconds: 18_000,
+			used_percent: 23,
+			reset_at: new Date(2030, 0, 2, 15, 30).getTime() / 1000,
+		},
+		secondary_window: { limit_window_seconds: 604_800, used_percent: 61, reset_after_seconds: 3_600 },
+	} }, now);
 	const handlers = new Map();
 	let command;
 	piOpenAIQuota({ on: (event, handler) => handlers.set(event, handler), registerCommand: (name) => { command = name; } });
 	await handlers.get("session_start")({}, { hasUI: false });
 	await handlers.get("session_shutdown")({}, { ui: { setStatus() {} } });
-	if (sample.text !== "GPT 5h 77% · 7d 39%" || sample.minimum !== 39 || command !== "openai-quota" || handlers.size !== 3) {
+	if (sample.text !== "GPT 5h 77% ↻ 15:30 · 7d 39% ↻ 11:00" || sample.minimum !== 39 || command !== "openai-quota" || handlers.size !== 3) {
 		throw new Error("self-check failed");
 	}
 	console.log("pi-openai-quota: ok");

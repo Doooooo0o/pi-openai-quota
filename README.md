@@ -3,7 +3,7 @@
 A dependency-free [pi](https://pi.dev) extension that keeps your remaining ChatGPT/Codex quota visible in the footer.
 
 ```text
-GPT 5h 77% · 7d 39%
+GPT 5h 77% ↻ 15:30 · 7d 39% ↻ 09:00
 ```
 
 ## Install
@@ -16,7 +16,7 @@ Run `/reload` if pi is already open. Authenticate with OpenAI Codex through pi's
 
 ## Usage
 
-The footer updates at startup and once per minute, including while the session is idle. Turns also trigger a refresh when the cached value is stale.
+The footer updates at startup and once per minute, including while the session is idle. Turns also trigger a refresh when the cached value is stale. Renewal times use your machine's local timezone.
 
 Run `/openai-quota` to force an immediate refresh. `GPT quota ?` means the request failed; the command displays the reason.
 
