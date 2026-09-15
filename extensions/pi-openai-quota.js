@@ -72,10 +72,13 @@ export function formatQuota(value, now = Date.now()) {
 				? now + resetAfter * 1000
 				: NaN);
 		const label = seconds >= 86_400 ? `${Math.round(seconds / 86_400)}d` : `${Math.round(seconds / 3_600)}h`;
+		const date = seconds >= 86_400
+			? `${reset.getFullYear()}-${String(reset.getMonth() + 1).padStart(2, "0")}-${String(reset.getDate()).padStart(2, "0")} `
+			: "";
 		return [{
 			label,
 			remaining: Math.round(Math.max(0, Math.min(100, 100 - used))),
-			reset: Number.isNaN(reset.getTime()) ? "" : ` ↻ ${reset.toTimeString().slice(0, 5)}`,
+			reset: Number.isNaN(reset.getTime()) ? "" : ` ↻ ${date}${reset.toTimeString().slice(0, 5)}`,
 		}];
 	});
 	if (!quotas.length) throw new Error("Unknown OpenAI quota response format");
@@ -150,7 +153,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 	piOpenAIQuota({ on: (event, handler) => handlers.set(event, handler), registerCommand: (name) => { command = name; } });
 	await handlers.get("session_start")({}, { hasUI: false });
 	await handlers.get("session_shutdown")({}, { ui: { setStatus() {} } });
-	if (sample.text !== "GPT 5h 77% ↻ 15:30 · 7d 39% ↻ 11:00" || sample.minimum !== 39 || command !== "openai-quota" || handlers.size !== 3) {
+	if (sample.text !== "GPT 5h 77% ↻ 15:30 · 7d 39% ↻ 2030-01-02 11:00" || sample.minimum !== 39 || command !== "openai-quota" || handlers.size !== 3) {
 		throw new Error("self-check failed");
 	}
 	console.log("pi-openai-quota: ok");
