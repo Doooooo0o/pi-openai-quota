@@ -12,7 +12,7 @@ GPT 5h 77% ↻ 15:30 · 7d 39% ↻ 2030-01-02 09:00
 pi install git:github.com/Doooooo0o/pi-openai-quota
 ```
 
-Run `/reload` if pi is already open. Authenticate with OpenAI Codex through pi's `/login` command if needed.
+Run `/reload` if pi is already open. With Pi's current **Sign in with ChatGPT** login, run `/login openai-codex` once with the same ChatGPT account/workspace; this companion login is used only to read quota, so keep `openai` as the active model provider.
 
 ## Usage
 
@@ -29,8 +29,9 @@ pi remove git:github.com/Doooooo0o/pi-openai-quota
 ## Security and privacy
 
 - No runtime dependencies, telemetry, subprocesses, or disk writes.
-- Reads the OpenAI Codex OAuth token through pi's public authentication API.
-- Sends that token only to `https://chatgpt.com/backend-api/wham/usage`.
+- Reads OpenAI OAuth tokens through pi's public authentication API.
+- Uses the active `openai` token only to identify its application locally; it is never sent to ChatGPT by this extension.
+- Sends only the companion `openai-codex` token to `https://chatgpt.com/backend-api/wham/usage` and its `/chatpass/apps` subpath.
 - Refuses redirects, times out after 8 seconds, and limits responses to 1 MB.
 - Never logs, displays, or persists the token.
 
