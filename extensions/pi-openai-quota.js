@@ -5,28 +5,41 @@ const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CACHE_MS = 60_000;
 const MAX_RESPONSE_BYTES = 1_000_000;
 
-function accountId(token) {
+function tokenClaims(token) {
 	try {
-		const claims = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
-		const id = claims?.["https://api.openai.com/auth"]?.chatgpt_account_id;
-		return typeof id === "string" && /^[\w-]{1,128}$/.test(id) ? id : undefined;
+		return JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
 	} catch {
 		return undefined;
 	}
 }
 
-async function tokenFor(ctx) {
-	const result = await ctx.modelRegistry.getProviderAuth("openai-codex");
-	if (result?.source !== "OAuth") throw new Error("OpenAI Codex is not logged in");
+function accountId(token) {
+	const id = tokenClaims(token)?.["https://api.openai.com/auth"]?.chatgpt_account_id;
+	return typeof id === "string" && /^[\w-]{1,128}$/.test(id) ? id : undefined;
+}
+
+function clientId(token) {
+	const claims = tokenClaims(token);
+	const scopes = typeof claims?.scope === "string" ? claims.scope.split(/\s+/) : [];
+	return claims?.iss === "https://auth.openai.com"
+		&& claims?.aud === "https://api.openai.com/v1"
+		&& scopes.includes("chatgpt.tokens.use.direct")
+		&& typeof claims?.client_id === "string"
+		&& /^oaiapp_[\w-]+$/.test(claims.client_id)
+		? claims.client_id
+		: undefined;
+}
+
+async function tokenFor(ctx, provider) {
+	const result = await ctx.modelRegistry.getProviderAuth(provider);
+	if (result?.source !== "OAuth") return undefined;
 	const auth = result.auth ?? {};
 	if (typeof auth.apiKey === "string" && auth.apiKey) return auth.apiKey;
 
 	const authorization = typeof auth.headers?.get === "function"
 		? auth.headers.get("authorization")
 		: Object.entries(auth.headers ?? {}).find(([name]) => name.toLowerCase() === "authorization")?.[1];
-	const token = typeof authorization === "string" ? authorization.match(/^Bearer\s+(.+)$/i)?.[1] : undefined;
-	if (!token) throw new Error("OpenAI Codex token not found");
-	return token;
+	return typeof authorization === "string" ? authorization.match(/^Bearer\s+(.+)$/i)?.[1] : undefined;
 }
 
 async function readJson(response) {
@@ -88,10 +101,9 @@ export function formatQuota(value, now = Date.now()) {
 	};
 }
 
-async function fetchQuota(ctx) {
-	const token = await tokenFor(ctx);
+async function fetchJson(token, url) {
 	const id = accountId(token);
-	const response = await fetch(USAGE_URL, {
+	const response = await fetch(url, {
 		signal: AbortSignal.timeout(8_000),
 		redirect: "error",
 		headers: {
@@ -101,7 +113,31 @@ async function fetchQuota(ctx) {
 		},
 	});
 	if (!response.ok) throw new Error(`OpenAI returned HTTP ${response.status}`);
-	return formatQuota(await readJson(response));
+	return readJson(response);
+}
+
+async function fetchQuota(ctx) {
+	const [openAIToken, codexToken] = await Promise.all([
+		tokenFor(ctx, "openai"),
+		tokenFor(ctx, "openai-codex"),
+	]);
+	if (!openAIToken && !codexToken) throw new Error("OpenAI is not logged in");
+	if (!openAIToken) return formatQuota(await fetchJson(codexToken, USAGE_URL));
+
+	const appId = clientId(openAIToken);
+	if (!appId) throw new Error("OpenAI Sign in with ChatGPT token not found");
+	if (!codexToken) {
+		throw new Error("Run /login openai-codex once with the same ChatGPT account; keep OpenAI active");
+	}
+	const [usage, apps] = await Promise.all([
+		fetchJson(codexToken, USAGE_URL),
+		fetchJson(codexToken, `${USAGE_URL}/chatpass/apps`),
+	]);
+	const matches = Array.isArray(apps?.items) ? apps.items.filter((app) => app?.id === appId) : [];
+	if (matches.length !== 1) {
+		throw new Error("OpenAI and OpenAI Codex must use the same ChatGPT account/workspace");
+	}
+	return formatQuota(usage);
 }
 
 export default function piOpenAIQuota(pi) {
